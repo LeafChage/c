@@ -1,21 +1,25 @@
 #[macro_use]
 extern crate combine;
+extern crate once_cell;
 
+mod codegen;
 mod parser;
 mod tokenizer;
-mod codegen;
 
 // pub use parser::Node;
-// use std::io::{Error, ErrorKind, Result};
 
 // mod tokenize;
 // pub use tokenize::Token;
+use std::fs;
+use std::io::{Error, ErrorKind, Result};
 
-fn main() {
+fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
-
-    // if let Some(src) = args.get(1) {
-    //     let mut node = parser::parse(src);
-    //     codegen::gen(node.pop().unwrap()).expect("OK");
-    // }
+    if let Some(path) = args.get(1) {
+        let src = fs::read_to_string(path)?;
+        let tokenize = tokenizer::tokenize(&src);
+        let node = parser::parse(&tokenize[..]);
+        codegen::gen(node);
+    }
+    Ok(())
 }

@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 combine = "4.6.6"
+once_cell = "1.13.1"

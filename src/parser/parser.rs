@@ -1,273 +1,253 @@
 use super::super::tokenizer::Token;
-use super::{Node, Sign};
-use combine::{between, choice, many, optional, parser, token, value, EasyParser, Parser, Stream};
+use super::Node;
 
-parser! {
-    fn identity[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token> ]
-        {
-            token(Token::identity(""))
-                .map(|t| if let Token::Identity(t) = t {
-                    Node::identity(t)
-                }else{
-                    unreachable!()
-                })
-        }
+use std::collections::HashMap;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error {
+    Expected(Vec<Token>),
 }
-parser! {
-    fn number[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token> ]
-        {
-            token(Token::number(0))
-                .map(|n| if let Token::Number(n) = n {
-                    Node::Number(n)
-                }else{
-                    unreachable!()
-                })
-        }
+pub type Result<T> = std::result::Result<T, Error>;
+
+pub struct CParser {
+    id_jar: HashMap<String, usize>,
 }
 
-parser! {
-    pub fn primary[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            let paren_expr = between(
-                token(Token::LeftParen),
-                token(Token::RightParen),
-                expr());
-
-            number()
-                .or(identity())
-                .or(paren_expr)
+impl CParser {
+    pub fn new() -> Self {
+        CParser {
+            id_jar: HashMap::new(),
         }
-}
+    }
 
-parser! {
-    pub fn unary[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token> ]
-        {
-            let plus_or_minus = choice((
-                    token(Token::Plus),
-                    token(Token::Minus)
-                    ));
-
-            optional(plus_or_minus)
-                .and(primary())
-                .map(|(t, n)|
-                     match t {
-                         Some(Token::Plus) => Node::unary(Sign::Plus, n),
-                         Some(Token::Minus) => Node::unary(Sign::Minus, n),
-                         Some(_) => unreachable!(),
-                         None => n,
-                     }
-                    )
+    fn make_offset(&mut self, key: &str) -> usize {
+        if let Some(offset) = self.id_jar.get(key) {
+            *offset
+        } else {
+            let offset = self.id_jar.len() * 8;
+            let _ = self.id_jar.insert(key.into(), offset);
+            offset
         }
-}
+    }
 
-parser! {
-    fn _multiple[Input](left: Node)(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            let mul = token(Token::Multiple).with(unary())
-                .map(|right| Node::multiple(left.clone(), right));
-            let dev = token(Token::Devide).with(unary())
-                .map(|right| Node::devide(left.clone(), right));
+    fn identity<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Identity(head), tail @ ..] => {
+                let offset = self.make_offset(head);
+                Ok((Node::local_variable(head, offset), tail))
+            }
+            _ => Err(Error::Expected(vec![Token::identity("")])),
+        }
+    }
 
-            choice((mul,dev))
-                .then(|left| _multiple(left))
-                .or(value(left.clone()))
+    fn number<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Number(head), tokens @ ..] => Ok((Node::number(*head), tokens)),
+            _ => Err(Error::Expected(vec![Token::number(0)])),
         }
-}
-parser! {
-    pub fn multiple[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            unary().then(|left| _multiple(left))
-        }
-}
+    }
 
-parser! {
-    pub fn _add[Input](left: Node)(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            let plus = token(Token::Plus).with(multiple())
-                .map(|right| Node::plus(left.clone(), right));
-            let minus = token(Token::Minus).with(multiple())
-                .map(|right| Node::minus(left.clone(), right));
+    fn in_paren<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::LeftParen, tokens @ ..] => {
+                let (node, tokens) = self.expr(tokens)?;
+                match tokens {
+                    [Token::RightParen, tokens @ ..] => Ok((node, tokens)),
+                    _ => Err(Error::Expected(vec![Token::RightParen])),
+                }
+            }
+            _ => Err(Error::Expected(vec![Token::LeftParen])),
+        }
+    }
 
-            choice((plus, minus))
-                .then(|left| _add(left))
-                .or(value(left.clone()))
-        }
-}
-parser! {
-    pub fn add[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            multiple().then(|left| _add(left))
-        }
-}
+    fn primary<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        self.identity(tokens)
+            .or(self.number(tokens))
+            .or(self.in_paren(tokens))
+    }
 
-parser! {
-    pub fn _relational[Input](left: Node)(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            let greater = token(Token::More)
-                .with(add()).map(|right| Node::less(right, left.clone()));
-            let less = token(Token::Less)
-                .with(add()).map(|right| Node::less(left.clone(), right));
-            let greater_than = token(Token::MoreEqual)
-                .with(add()) .map(|right| Node::less_equal(right, left.clone()));
-            let less_than = token(Token::LessEqual)
-                .with(add()) .map(|right| Node::less_equal(left.clone(), right));
+    fn unary<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Plus, Token::Number(n), tokens @ ..] => Ok((Node::number(*n), tokens)),
+            [Token::Minus, Token::Number(n), tokens @ ..] => Ok((Node::number(*n * -1), tokens)),
+            _ => self.primary(tokens),
+        }
+    }
 
-            choice((greater, less, greater_than, less_than))
-                .then(|left| _relational(left))
-                .or(value(left.clone()))
+    fn _multiple<'a>(&mut self, tokens: &'a [Token], left: Node) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Multiple, tokens @ ..] => {
+                let (right, tokens) = self.unary(tokens)?;
+                self._multiple(tokens, Node::multiple(left, right))
+            }
+            [Token::Devide, tokens @ ..] => {
+                let (right, tokens) = self.unary(tokens)?;
+                self._multiple(tokens, Node::devide(left, right))
+            }
+            _ => Ok((left, tokens)),
         }
-}
-parser! {
-    pub fn relational[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            add().then(|left| _relational(left))
-        }
-}
+    }
+    fn multiple<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let (left, tokens) = self.unary(tokens)?;
+        self._multiple(tokens, left)
+    }
 
-parser! {
-    pub fn _equality[Input](left: Node)(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            let equal = token(Token::Equal)
-                .with(relational()) .map(|right| Node::equal(left.clone(), right));
-            let unequal = token(Token::NotEqual)
-                .with(relational()) .map(|right| Node::unequal(left.clone(), right));
+    fn _add<'a>(&mut self, tokens: &'a [Token], left: Node) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Plus, tokens @ ..] => {
+                let (right, tokens) = self.multiple(tokens)?;
+                self._add(tokens, Node::plus(left, right))
+            }
+            [Token::Minus, tokens @ ..] => {
+                let (right, tokens) = self.multiple(tokens)?;
+                self._add(tokens, Node::minus(left, right))
+            }
+            _ => Ok((left, tokens)),
+        }
+    }
 
-            choice((equal, unequal))
-                .then(|left| _equality(left))
-                .or(value(left.clone()))
-        }
-}
-parser! {
-    pub fn equality[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            relational().then(|left| _equality(left))
-        }
-}
+    fn add<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let (left, tokens) = self.multiple(tokens)?;
+        self._add(tokens, left)
+    }
 
-parser! {
-    pub fn assign[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            equality().and(optional(token(Token::Assign).with(assign())))
-                .map(|(left, right)| Node::assign(left, right))
+    fn _relational<'a>(&mut self, tokens: &'a [Token], left: Node) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::More, tokens @ ..] => {
+                let (right, tokens) = self.add(tokens)?;
+                self._relational(tokens, Node::less(right, left))
+            }
+            [Token::Less, tokens @ ..] => {
+                let (right, tokens) = self.add(tokens)?;
+                self._relational(tokens, Node::less(left, right))
+            }
+            [Token::MoreEqual, tokens @ ..] => {
+                let (right, tokens) = self.add(tokens)?;
+                self._relational(tokens, Node::less_equal(right, left))
+            }
+            [Token::LessEqual, tokens @ ..] => {
+                let (right, tokens) = self.add(tokens)?;
+                self._relational(tokens, Node::less_equal(left, right))
+            }
+            _ => Ok((left, tokens)),
         }
-}
+    }
+    fn relational<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let (left, tokens) = self.add(tokens)?;
+        self._relational(tokens, left)
+    }
 
-parser! {
-    pub fn expr[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            equality()
+    fn _equality<'a>(&mut self, tokens: &'a [Token], left: Node) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Equal, tokens @ ..] => {
+                let (right, tokens) = self.relational(tokens)?;
+                self._equality(tokens, Node::equal(right, left))
+            }
+            [Token::NotEqual, tokens @ ..] => {
+                let (right, tokens) = self.relational(tokens)?;
+                self._equality(tokens, Node::unequal(left, right))
+            }
+            _ => Ok((left, tokens)),
         }
-}
+    }
+    fn equality<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let (left, tokens) = self.relational(tokens)?;
+        self._equality(tokens, left)
+    }
 
-parser! {
-    pub fn stmt[Input]()(Input) -> Node
-        where [ Input: Stream<Token = Token>]
-        {
-            expr().skip(token(Token::EndExpr))
+    fn assign_right<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Assign, tokens @ ..] => self.assign(tokens),
+            _ => Err(Error::Expected(vec![Token::Assign])),
         }
-}
+    }
+    fn assign<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let (left, tokens) = self.equality(tokens)?;
+        let right = self.assign_right(tokens);
+        match (left, right) {
+            (Node::LocalVariable(id, offset), Ok((right, tokens))) => Ok((
+                Node::assign(Node::local_variable(id, offset), right),
+                tokens,
+            )),
+            (left, Err(..)) => Ok((left, tokens)),
+            (_, _) => unimplemented!("expect left is local variable"),
+        }
+    }
 
-parser! {
-    pub fn program[Input]()(Input) -> Vec<Node>
-        where [ Input: Stream<Token = Token>]
-        {
-            many::<Vec<Node>, _, _>(stmt())
+    fn expr<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        self.assign(tokens)
+    }
+
+    fn stmt<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Return, tokens @ ..] => {
+                let (node, tokens) = self.stmt(tokens)?;
+                Ok((Node::rtn(node), tokens))
+            }
+            _ => {
+                let (node, tokens) = self.expr(tokens)?;
+                match tokens {
+                    [Token::EndExpr, tail @ ..] => Ok((node, tail)),
+                    _ => Err(Error::Expected(vec![Token::EndExpr])),
+                }
+            }
         }
+    }
+
+    pub fn program<'a>(&mut self, tokens: &'a [Token]) -> Result<(Vec<Node>, &'a [Token])> {
+        let mut tokens = tokens;
+        let mut stmts = vec![];
+        while tokens.len() > 0 {
+            match self.stmt(tokens) {
+                Ok((node, _tokens)) => {
+                    tokens = _tokens;
+                    stmts.push(node);
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok((stmts, tokens))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::super::tokenizer::tokenize;
     use super::*;
-    use combine::EasyParser;
 
     #[test]
-    fn it_multiple() {
+    fn it_program() {
+        let mut cparser = CParser::new();
         assert_eq!(
-            multiple().easy_parse(&tokenize("3 * 5")[..]).unwrap().0,
-            Node::multiple(Node::number(3), Node::number(5))
-        );
-        assert_eq!(
-            multiple().easy_parse(&tokenize("3 / 5")[..]).unwrap().0,
-            Node::devide(Node::number(3), Node::number(5))
-        );
-    }
-    #[test]
-    fn it_add() {
-        assert_eq!(
-            add().easy_parse(&tokenize("3 * 5")[..]).unwrap().0,
-            Node::multiple(Node::number(3), Node::number(5))
-        );
-        assert_eq!(
-            add().easy_parse(&tokenize("3 * 5 - 2")[..]).unwrap().0,
-            Node::minus(
-                Node::multiple(Node::number(3), Node::number(5)),
-                Node::number(2)
-            )
-        );
-        assert_eq!(
-            add().easy_parse(&tokenize("3 - 5 * 2")[..]).unwrap().0,
-            Node::minus(
-                Node::number(3),
-                Node::multiple(Node::number(5), Node::number(2)),
-            )
-        );
-    }
-
-    #[test]
-    fn it_expr() {
-        assert_eq!(
-            expr().easy_parse(&tokenize("1*2+(3+4)")[..]).unwrap().0,
-            Node::plus(
-                Node::multiple(Node::number(1), Node::number(2),),
-                Node::plus(Node::number(3), Node::number(4))
-            )
-        );
-        assert_eq!(
-            expr().easy_parse(&tokenize("5+6*7")[..]).unwrap().0,
-            Node::plus(
-                Node::number(5),
-                Node::multiple(Node::number(6), Node::number(7))
-            )
-        );
-        assert_eq!(
-            expr().easy_parse(&tokenize("(3+5)/2")[..]).unwrap().0,
-            Node::devide(
-                Node::plus(Node::number(3), Node::number(5)),
-                Node::number(2)
-            )
-        );
-        assert_eq!(
-            expr().easy_parse(&tokenize("(3+5)/2")[..]).unwrap().0,
-            Node::devide(
-                Node::plus(Node::number(3), Node::number(5)),
-                Node::number(2)
-            )
-        );
-        assert_eq!(
-            expr().easy_parse(&tokenize("-3*+5")[..]).unwrap().0,
-            Node::multiple(
-                Node::unary(Sign::Minus, Node::number(3)),
-                Node::unary(Sign::Plus, Node::number(5)),
-            )
-        );
-        assert_eq!(
-            expr().easy_parse(&tokenize("1 == 2")[..]).unwrap().0,
-            Node::equal(Node::number(1), Node::number(2))
+            cparser.program(
+                &tokenize(
+                    "
+                a = 3;
+                b = 5 * 6 - 8;
+                return a + b / 2;
+            "
+                )[..]
+            ),
+            Ok((
+                vec![
+                    Node::assign(Node::local_variable("a", 0), Node::number(3)),
+                    Node::assign(
+                        Node::local_variable("b", 8),
+                        Node::minus(
+                            Node::multiple(Node::number(5), Node::number(6)),
+                            Node::number(8),
+                        )
+                    ),
+                    Node::rtn(Node::plus(
+                        Node::local_variable("a", 0),
+                        Node::devide(Node::local_variable("b", 8), Node::number(2))
+                    )),
+                ],
+                &[] as &[Token]
+            ))
         );
     }
 }

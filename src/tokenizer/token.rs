@@ -51,6 +51,9 @@ pub enum Token {
     /// )
     RightParen,
 
+    /// return
+    Return,
+
     Number(isize),
 
     Identity(String),
@@ -89,6 +92,7 @@ impl PartialEq for Token {
             | (Token::EndExpr, Token::EndExpr)
             | (Token::LeftParen, Token::LeftParen)
             | (Token::RightParen, Token::RightParen)
+            | (Token::Return, Token::Return)
             | (Token::Number(_), Token::Number(_))
             | (Token::Identity(_), Token::Identity(_)) => true,
             _ => false,

@@ -1,11 +1,5 @@
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum Sign {
-    Plus,
-    Minus,
-}
-
 /// program    = stmt*
-/// stmt       = expr ";"
+/// stmt       = expr ";" | "return" expr ";"
 /// expr       = assign
 /// assign     = equality ("=" assign)?
 /// equality   = relational ("==" relational | "!=" relational)*
@@ -18,10 +12,8 @@ pub enum Sign {
 pub enum Node {
     Number(isize),
 
-    Identity(String),
-
-    /// + right / - right
-    Unary(Sign, Box<Node>),
+    /// id, offset from RBP
+    LocalVariable(String, usize),
 
     /// left == right
     Equal(Box<Node>, Box<Node>),
@@ -47,21 +39,20 @@ pub enum Node {
     /// left / right
     Devide(Box<Node>, Box<Node>),
 
-    Assign(Box<Node>, Option<Box<Node>>),
+    Assign(Box<Node>, Box<Node>),
+
+    Return(Box<Node>),
 }
 
 impl Node {
     pub fn number(n: isize) -> Self {
         Node::Number(n)
     }
-    pub fn identity<S>(n: S) -> Self
+    pub fn local_variable<S>(n: S, offset: usize) -> Self
     where
         S: Into<String>,
     {
-        Node::Identity(n.into())
-    }
-    pub fn unary(left: Sign, right: Self) -> Self {
-        Node::Unary(left, Box::new(right))
+        Node::LocalVariable(n.into(), offset)
     }
     pub fn equal(left: Self, right: Self) -> Self {
         Node::Equal(Box::new(left), Box::new(right))
@@ -87,7 +78,10 @@ impl Node {
     pub fn devide(left: Self, right: Self) -> Self {
         Node::Devide(Box::new(left), Box::new(right))
     }
-    pub fn assign(left: Self, right: Option<Self>) -> Self {
-        Node::Assign(Box::new(left), right.map(|r| Box::new(r)))
+    pub fn assign(left: Self, right: Self) -> Self {
+        Node::Assign(Box::new(left), Box::new(right))
+    }
+    pub fn rtn(node: Self) -> Self {
+        Node::Return(Box::new(node))
     }
 }

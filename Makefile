@@ -7,3 +7,8 @@ exec: test.s
 _docker.build:
 	docker build . -t c --no-cache
 
+
+
+test:
+	cargo run "a = 3; b = 5 * 6 - 8; a + b / 2;"
+

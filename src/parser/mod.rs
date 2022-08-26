@@ -1,10 +1,10 @@
 mod node;
 mod parser;
 use super::tokenizer::Token;
-use combine::EasyParser;
 
-pub use node::{Node, Sign};
+pub use node::Node;
 
 pub fn parse(src: &[Token]) -> Vec<Node> {
-    parser::program().easy_parse(src).expect("TODO").0
+    let mut p = parser::CParser::new();
+    p.program(src).expect("TODO").0
 }
