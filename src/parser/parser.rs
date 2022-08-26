@@ -178,12 +178,97 @@ impl CParser {
         self.assign(tokens)
     }
 
+    fn return_n<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let (node, tokens) = self.expr(tokens)?;
+        match tokens {
+            [Token::EndExpr, tail @ ..] => Ok((Node::return_n(node), tail)),
+            _ => Err(Error::Expected(vec![Token::EndExpr])),
+        }
+    }
+
+    fn if_else_body<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::Else, tokens @ ..] => self.stmt(tokens),
+            _ => Err(Error::Expected(vec![Token::Else])),
+        }
+    }
+    fn if_n<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let (condition, tokens) = self.in_paren(tokens)?;
+        let (body, tokens) = self.stmt(tokens)?;
+
+        if let Ok((else_body, tokens)) = self.if_else_body(tokens) {
+            Ok((Node::if_n(condition, body, Some(else_body)), tokens))
+        } else {
+            Ok((Node::if_n(condition, body, None), tokens))
+        }
+    }
+
+    fn for_condition<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::EndExpr, tokens @ ..] => Err(Error::Expected(vec![])),
+            _ => {
+                let (node, tokens) = self.expr(tokens)?;
+                match tokens {
+                    [Token::EndExpr, tokens @ ..] => Ok((node, tokens)),
+                    _ => Err(Error::Expected(vec![Token::EndExpr])),
+                }
+            }
+        }
+    }
+    fn for_condition_third<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::RightParen, _tokens @ ..] => Err(Error::Expected(vec![])),
+            _ => {
+                let (node, tokens) = self.expr(tokens)?;
+                match tokens {
+                    [Token::RightParen, tokens @ ..] => Ok((node, tokens)),
+                    _ => Err(Error::Expected(vec![Token::RightParen])),
+                }
+            }
+        }
+    }
+    fn for_n<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        match tokens {
+            [Token::LeftParen, tokens @ ..] => {
+                let (condition1, tokens) = if let Ok((cnd, tokens)) = self.for_condition(tokens) {
+                    (Some(cnd), tokens)
+                } else {
+                    (None, tokens)
+                };
+                let (condition2, tokens) = if let Ok((cnd, tokens)) = self.for_condition(tokens) {
+                    (Some(cnd), tokens)
+                } else {
+                    (None, tokens)
+                };
+                let (condition3, tokens) =
+                    if let Ok((cnd, tokens)) = self.for_condition_third(tokens) {
+                        (Some(cnd), tokens)
+                    } else {
+                        (None, tokens)
+                    };
+
+                let (body, tokens) = self.stmt(tokens)?;
+                Ok((
+                    Node::for_n(condition1, condition2, condition3, body),
+                    tokens,
+                ))
+            }
+            _ => Err(Error::Expected(vec![Token::LeftParen])),
+        }
+    }
+
+    fn while_n<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let (condition, tokens) = self.in_paren(tokens)?;
+        let (body, tokens) = self.stmt(tokens)?;
+        Ok((Node::while_n(condition, body), tokens))
+    }
+
     fn stmt<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
         match tokens {
-            [Token::Return, tokens @ ..] => {
-                let (node, tokens) = self.stmt(tokens)?;
-                Ok((Node::rtn(node), tokens))
-            }
+            [Token::Return, tokens @ ..] => self.return_n(tokens),
+            [Token::If, tokens @ ..] => self.if_n(tokens),
+            [Token::For, tokens @ ..] => self.for_n(tokens),
+            [Token::While, tokens @ ..] => self.while_n(tokens),
             _ => {
                 let (node, tokens) = self.expr(tokens)?;
                 match tokens {
@@ -228,6 +313,10 @@ mod tests {
                 a = 3;
                 b = 5 * 6 - 8;
                 return a + b / 2;
+
+                if(1==1) a + b;
+                for(i=0; i<1; i=i+1) 1;
+                while(1==1) a + b;
             "
                 )[..]
             ),
@@ -241,10 +330,28 @@ mod tests {
                             Node::number(8),
                         )
                     ),
-                    Node::rtn(Node::plus(
+                    Node::return_n(Node::plus(
                         Node::local_variable("a", 0),
                         Node::devide(Node::local_variable("b", 8), Node::number(2))
                     )),
+                    Node::if_n(
+                        Node::equal(Node::number(1), Node::number(1)),
+                        Node::plus(Node::local_variable("a", 0), Node::local_variable("b", 8),),
+                        None
+                    ),
+                    Node::for_n(
+                        Some(Node::assign(Node::local_variable("i", 16), Node::number(0))),
+                        Some(Node::less(Node::local_variable("i", 16), Node::number(1))),
+                        Some(Node::assign(
+                            Node::local_variable("i", 16),
+                            Node::plus(Node::local_variable("i", 16), Node::number(1),)
+                        )),
+                        Node::number(1),
+                    ),
+                    Node::while_n(
+                        Node::equal(Node::number(1), Node::number(1)),
+                        Node::plus(Node::local_variable("a", 0), Node::local_variable("b", 8),),
+                    ),
                 ],
                 &[] as &[Token]
             ))

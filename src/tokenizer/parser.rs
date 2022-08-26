@@ -123,6 +123,10 @@ parser! {
                 many::<Vec<Token>, _, _>(
                     choice((
                             attempt(string("return")).map(|_| Token::Return),
+                            attempt(string("if")).map(|_| Token::If),
+                            attempt(string("else")).map(|_| Token::Else),
+                            attempt(string("for")).map(|_| Token::For),
+                            attempt(string("while")).map(|_| Token::While),
                             attempt(string("&&")).map(|_| Token::And),
                             attempt(string("||")).map(|_| Token::Or) ,
                             attempt(string("==")).map(|_| Token::Equal),

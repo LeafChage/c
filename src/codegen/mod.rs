@@ -161,6 +161,9 @@ fn node(n: Node) -> Result<()> {
         Node::Assign(left, right) => assign(*left, *right)?,
         Node::LocalVariable(id, offset) => local_val(id, offset)?,
         Node::Return(n) => rtn(*n)?,
+        Node::If(..) => unimplemented!(),
+        Node::While(..) => unimplemented!(),
+        Node::For(..) => unimplemented!(),
     }
     Ok(())
 }

@@ -1,5 +1,9 @@
 /// program    = stmt*
-/// stmt       = expr ";" | "return" expr ";"
+/// stmt       = expr ";"
+///                 | "return" expr ";"
+///                 | "if" "(" expr ")" stmt ("else" stmt)?
+///                 | "while" "(" expr ")" stmt
+///                 | "for" "(" expr? ";" expr? ";" expr? ")" stmt
 /// expr       = assign
 /// assign     = equality ("=" assign)?
 /// equality   = relational ("==" relational | "!=" relational)*
@@ -42,6 +46,34 @@ pub enum Node {
     Assign(Box<Node>, Box<Node>),
 
     Return(Box<Node>),
+
+    /// ```
+    /// if 1==1
+    ///     print 3
+    /// else
+    ///     print 4
+    /// ```
+    /// If(1==1, print 3, print 4)
+    If(Box<Node>, Box<Node>, Option<Box<Node>>),
+
+    /// ```
+    /// for (i=0; i<10; i++)
+    ///     print 1
+    /// ```
+    /// For(i=0, i<10, i++, print 1)
+    For(
+        Option<Box<Node>>,
+        Option<Box<Node>>,
+        Option<Box<Node>>,
+        Box<Node>,
+    ),
+
+    /// ```
+    /// while (true)
+    ///     print 1
+    /// ```
+    /// While(true, print 1)
+    While(Box<Node>, Box<Node>),
 }
 
 impl Node {
@@ -81,7 +113,33 @@ impl Node {
     pub fn assign(left: Self, right: Self) -> Self {
         Node::Assign(Box::new(left), Box::new(right))
     }
-    pub fn rtn(node: Self) -> Self {
+    pub fn return_n(node: Self) -> Self {
         Node::Return(Box::new(node))
+    }
+
+    pub fn if_n(condition: Self, true_action: Self, false_action: Option<Self>) -> Self {
+        Node::If(
+            Box::new(condition),
+            Box::new(true_action),
+            false_action.map(|fa| Box::new(fa)),
+        )
+    }
+
+    pub fn for_n(
+        condition1: Option<Self>,
+        condition2: Option<Self>,
+        condition3: Option<Self>,
+        node: Self,
+    ) -> Self {
+        Node::For(
+            condition1.map(|c| Box::new(c)),
+            condition2.map(|c| Box::new(c)),
+            condition3.map(|c| Box::new(c)),
+            Box::new(node),
+        )
+    }
+
+    pub fn while_n(condition: Self, node: Self) -> Self {
+        Node::While(Box::new(condition), Box::new(node))
     }
 }
