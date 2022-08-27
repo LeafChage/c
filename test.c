@@ -1,4 +1,3 @@
-foo = 3;
-bar = 5 * 6 - 8;
-return foo + bar / 2;
-return foo;
+n = 0;
+for (i = 0; i < 10; i = i+1)  n = n + i;
+n;

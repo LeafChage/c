@@ -9,13 +9,13 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct CParser {
+pub struct Parser {
     id_jar: HashMap<String, usize>,
 }
 
-impl CParser {
+impl Parser {
     pub fn new() -> Self {
-        CParser {
+        Self {
             id_jar: HashMap::new(),
         }
     }
@@ -305,9 +305,9 @@ mod tests {
 
     #[test]
     fn it_program() {
-        let mut cparser = CParser::new();
+        let mut parser = Parser::new();
         assert_eq!(
-            cparser.program(
+            parser.program(
                 &tokenize(
                     "
                 a = 3;

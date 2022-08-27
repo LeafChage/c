@@ -3,8 +3,9 @@ mod parser;
 use super::tokenizer::Token;
 
 pub use node::Node;
+pub use parser::{Error, Result};
 
-pub fn parse(src: &[Token]) -> Vec<Node> {
-    let mut p = parser::CParser::new();
-    p.program(src).expect("TODO").0
+pub fn parse(src: &[Token]) -> Result<Vec<Node>> {
+    let mut p = parser::Parser::new();
+    p.program(src).map(|(nodes, _)| nodes)
 }
