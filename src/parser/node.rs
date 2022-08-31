@@ -1,5 +1,6 @@
 /// program    = stmt*
 /// stmt       = expr ";"
+///                 | "{" stmt* "}"
 ///                 | "return" expr ";"
 ///                 | "if" "(" expr ")" stmt ("else" stmt)?
 ///                 | "while" "(" expr ")" stmt
@@ -74,6 +75,15 @@ pub enum Node {
     /// ```
     /// While(true, print 1)
     While(Box<Node>, Box<Node>),
+
+    /// ```
+    /// {
+    /// node;
+    /// node;
+    /// node;
+    /// }
+    /// Block(vec![node, node, node])
+    Block(Box<Vec<Node>>),
 }
 
 impl Node {
@@ -141,5 +151,9 @@ impl Node {
 
     pub fn while_n(condition: Self, node: Self) -> Self {
         Node::While(Box::new(condition), Box::new(node))
+    }
+
+    pub fn block(nodes: Vec<Self>) -> Self {
+        Node::Block(Box::new(nodes))
     }
 }

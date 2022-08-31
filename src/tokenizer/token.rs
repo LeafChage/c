@@ -51,6 +51,12 @@ pub enum Token {
     /// )
     RightParen,
 
+    /// {
+    LeftBlock,
+
+    /// }
+    RightBlock,
+
     /// return
     Return,
 

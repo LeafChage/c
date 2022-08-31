@@ -80,6 +80,13 @@ impl Codegen {
         Ok(())
     }
 
+    fn block(&mut self, nodes: Vec<Node>) -> Result<()> {
+        for node in nodes.into_iter() {
+            self.node(node)?;
+        }
+        Ok(())
+    }
+
     fn definition_variable(&mut self, _id: String, offset: usize) -> Result<()> {
         println!("  mov rax, rbp");
         println!("  sub rax, {}", offset);
@@ -250,6 +257,7 @@ impl Codegen {
                 condition3.map(|c| *c),
                 *body,
             )?,
+            Node::Block(nodes) => self.block(*nodes)?,
         }
         Ok(())
     }

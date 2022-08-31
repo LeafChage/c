@@ -1,6 +1,5 @@
 use super::super::tokenizer::Token;
 use super::Node;
-
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -263,8 +262,29 @@ impl Parser {
         Ok((Node::while_n(condition, body), tokens))
     }
 
+    fn block<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
+        let mut nodes = vec![];
+        let mut tokens = tokens;
+        loop {
+            match tokens {
+                [Token::RightBlock, tokens @ ..] => {
+                    return Ok((Node::block(nodes), tokens));
+                }
+                [_, _tokens @ ..] => match self.stmt(tokens) {
+                    Ok((node, _tokens)) => {
+                        nodes.push(node);
+                        tokens = _tokens
+                    }
+                    Err(e) => return Err(e),
+                },
+                _ => return Err(Error::Expected(vec![Token::RightBlock])),
+            }
+        }
+    }
+
     fn stmt<'a>(&mut self, tokens: &'a [Token]) -> Result<(Node, &'a [Token])> {
         match tokens {
+            [Token::LeftBlock, tokens @ ..] => self.block(tokens),
             [Token::Return, tokens @ ..] => self.return_n(tokens),
             [Token::If, tokens @ ..] => self.if_n(tokens),
             [Token::For, tokens @ ..] => self.for_n(tokens),
@@ -302,55 +322,108 @@ impl Parser {
 mod tests {
     use super::super::super::tokenizer::tokenize;
     use super::*;
+    #[test]
+    fn it_block() {
+        let mut parser = Parser::new();
+        let tokens = tokenize(
+            "
+                n = 0;
+                m = 0;
+                for(i=0; i<1; i=i+1) {
+                    n = n + i;
+                    m = m + i;
+                }
+            ",
+        );
+        let n = Node::local_variable("n", 8 * 0);
+        let m = Node::local_variable("m", 8 * 1);
+        let i = Node::local_variable("i", 8 * 2);
+        assert_eq!(
+            parser.program(&tokens[..]),
+            Ok((
+                vec![
+                    Node::assign(n.clone(), Node::number(0)),
+                    Node::assign(m.clone(), Node::number(0)),
+                    Node::for_n(
+                        Some(Node::assign(i.clone(), Node::number(0))),
+                        Some(Node::less(i.clone(), Node::number(1))),
+                        Some(Node::assign(
+                            i.clone(),
+                            Node::plus(i.clone(), Node::number(1),)
+                        )),
+                        Node::block(vec![
+                            Node::assign(n.clone(), Node::plus(n.clone(), i.clone())),
+                            Node::assign(m.clone(), Node::plus(m.clone(), i.clone())),
+                        ]),
+                    ),
+                ],
+                &[] as &[Token]
+            ))
+        );
+    }
 
     #[test]
     fn it_program() {
         let mut parser = Parser::new();
-        assert_eq!(
-            parser.program(
-                &tokenize(
-                    "
+        let tokens = tokenize(
+            "
                 a = 3;
                 b = 5 * 6 - 8;
                 return a + b / 2;
 
+                n = 0;
+                m = 0;
+                for(i=0; i<1; i=i+1) {
+                    n = n + i;
+                    m = m + i;
+                }
                 if(1==1) a + b;
-                for(i=0; i<1; i=i+1) 1;
                 while(1==1) a + b;
-            "
-                )[..]
-            ),
+            ",
+        );
+        let a = Node::local_variable("a", 8 * 0);
+        let b = Node::local_variable("b", 8 * 1);
+        let n = Node::local_variable("n", 8 * 2);
+        let m = Node::local_variable("m", 8 * 3);
+        let i = Node::local_variable("i", 8 * 4);
+        assert_eq!(
+            parser.program(&tokens[..]),
             Ok((
                 vec![
-                    Node::assign(Node::local_variable("a", 0), Node::number(3)),
+                    Node::assign(a.clone(), Node::number(3)),
                     Node::assign(
-                        Node::local_variable("b", 8),
+                        b.clone(),
                         Node::minus(
                             Node::multiple(Node::number(5), Node::number(6)),
                             Node::number(8),
                         )
                     ),
                     Node::return_n(Node::plus(
-                        Node::local_variable("a", 0),
-                        Node::devide(Node::local_variable("b", 8), Node::number(2))
+                        a.clone(),
+                        Node::devide(b.clone(), Node::number(2))
                     )),
+                    Node::assign(n.clone(), Node::number(0)),
+                    Node::assign(m.clone(), Node::number(0)),
+                    Node::for_n(
+                        Some(Node::assign(i.clone(), Node::number(0))),
+                        Some(Node::less(i.clone(), Node::number(1))),
+                        Some(Node::assign(
+                            i.clone(),
+                            Node::plus(i.clone(), Node::number(1),)
+                        )),
+                        Node::block(vec![
+                            Node::assign(n.clone(), Node::plus(n.clone(), i.clone())),
+                            Node::assign(m.clone(), Node::plus(m.clone(), i.clone())),
+                        ]),
+                    ),
                     Node::if_n(
                         Node::equal(Node::number(1), Node::number(1)),
-                        Node::plus(Node::local_variable("a", 0), Node::local_variable("b", 8),),
+                        Node::plus(a.clone(), b.clone()),
                         None
-                    ),
-                    Node::for_n(
-                        Some(Node::assign(Node::local_variable("i", 16), Node::number(0))),
-                        Some(Node::less(Node::local_variable("i", 16), Node::number(1))),
-                        Some(Node::assign(
-                            Node::local_variable("i", 16),
-                            Node::plus(Node::local_variable("i", 16), Node::number(1),)
-                        )),
-                        Node::number(1),
                     ),
                     Node::while_n(
                         Node::equal(Node::number(1), Node::number(1)),
-                        Node::plus(Node::local_variable("a", 0), Node::local_variable("b", 8),),
+                        Node::plus(a.clone(), b.clone()),
                     ),
                 ],
                 &[] as &[Token]
